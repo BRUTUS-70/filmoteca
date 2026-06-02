@@ -1,0 +1,54 @@
+---
+// src/layouts/Layout.astro
+import '../styles/global.css';
+
+const { title = "Filmoteca" } = Astro.props;
+---
+
+<!doctype html>
+<html lang="es">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+        <title>{title}</title>
+    </head>
+    <body>
+        <slot />
+        
+        <script>
+            function setupInactivityTimer() {
+                let time;
+                const timeoutMs = 15 * 60 * 1000; // 15 minutos en milisegundos
+
+                const logout = function() {
+                    // Limpiar cookies de sesión de Supabase
+                    document.cookie = "sb-access-token=; path=/; max-age=0;";
+                    document.cookie = "sb-refresh-token=; path=/; max-age=0;";
+                    // Limpiar almacenamiento local
+                    localStorage.clear();
+                    sessionStorage.clear();
+                    // Redirigir al login
+                    window.location.replace('/');
+                };
+
+                const resetTimer = function() {
+                    clearTimeout(time);
+                    time = setTimeout(logout, timeoutMs);
+                };
+
+                // Iniciar el temporizador
+                resetTimer();
+
+                // Escuchar eventos de actividad del usuario
+                document.addEventListener('mousemove', resetTimer);
+                document.addEventListener('keypress', resetTimer);
+                document.addEventListener('scroll', resetTimer, true);
+                document.addEventListener('click', resetTimer);
+            }
+
+            // Arrancar el script al cargar
+            window.addEventListener('load', setupInactivityTimer);
+        </script>
+    </body>
+</html>

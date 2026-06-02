@@ -1,0 +1,616 @@
+---
+// src/pages/dashboard.astro
+import Layout from '../layouts/Layout.astro';
+import MenuLateral from '../components/MenuLateral.astro';
+export const prerender = false;
+---
+
+<Layout title="Dashboard | Filmoteca">
+    <MenuLateral>
+        <div id="btn-home" class="nav-link active" onclick="window.goHome()">
+            <span>🏠 Inicio (Últimas Incorporaciones)</span>
+        </div>
+
+        <div class="section-label" style="margin-top: 15px;">Categorías</div>
+        <div class="box-style" id="cat-list"></div>
+
+        <div class="section-label">Estadísticas</div>
+        <div class="box-style">
+            <div id="stats-list"></div>
+            
+            <div style="background: #1a1a1a; height: 8px; border-radius: 10px; margin-top: 25px; overflow: hidden; border: 1px solid var(--border-color);">
+                <div id="bar-fill" class="disk-progress"></div>
+            </div>
+            
+            <div style="display: flex; justify-content: space-between; font-size: 0.9rem; margin-top: 15px; padding: 0 8px; font-weight: 600;">
+                <div style="color:var(--color-accent)"><span id="txt-used">0 GB</span> / 32 TB</div>
+                <div id="txt-perc" style="color:var(--color-accent);">0%</div>
+            </div>
+        </div>
+    </MenuLateral>
+
+    <main>
+        <div class="header-bar">
+            <h2 id="view-title" class="view-title-main">Últimas<span>Incorporaciones</span></h2>
+            
+            <div class="header-actions">
+                <div class="search-box">
+                    <input type="text" id="search-input" placeholder="Buscar título, saga o serie..." autocomplete="off"/>
+                    <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 20">
+                        <path stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z"/>
+                    </svg>
+                </div>
+                
+                <select id="sort-select" class="sort-box" style="display: none;">
+                    <option value="az">A ➔ Z</option>
+                    <option value="za">Z ➔ A</option>
+                    <option value="year-desc">Año ▼</option>
+                    <option value="year-asc">Año ▲</option>
+                    <option value="size-desc">Tamaño ▼</option>
+                    <option value="size-asc">Tamaño ▲</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="grid" class="film-grid"></div>
+    </main>
+
+    <div id="movie-modal" class="modal-overlay" onclick="if(event.target === this) window.closeModal()">
+        <div class="modal-content">
+            <div class="modal-close" onclick="window.closeModal()">✖</div>
+            
+            <div class="modal-left">
+                <img id="modal-poster" class="modal-poster" src="" alt="Poster" />
+            </div>
+            
+            <div class="modal-right">
+                <div id="modal-title" class="modal-title">Cargando...</div>
+                
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px;">
+                    <div id="modal-subtitle" class="modal-subtitle"></div>
+                    <div id="modal-admin-edit"></div>
+                </div>
+                
+                <div class="modal-section-title">Sinopsis</div>
+                <div id="modal-synopsis" class="modal-synopsis"></div>
+                
+                <div class="modal-section-title">Reparto Principal</div>
+                <div id="modal-cast" class="modal-cast-grid"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        import { createClient } from '@supabase/supabase-js'
+        
+        const supabase = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.PUBLIC_SUPABASE_ANON_KEY);
+        const tmdbKey = import.meta.env.PUBLIC_TMDB_KEY; 
+
+        let DATA = [];
+        window.currentViewContext = { type: 'home', data: [] };
+
+        function normalizeStr(str) {
+            return (str || '').toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+        }
+
+        window.closeModal = () => {
+            document.getElementById('movie-modal').classList.remove('active');
+        };
+
+        window.goBack = () => {
+            document.getElementById('search-input').value = ''; 
+            const activeNav = document.querySelector('.nav-link.active');
+            
+            if (activeNav && activeNav.id === 'btn-home') {
+                window.goHome();
+            } else if (activeNav && activeNav.dataset.cat) {
+                window.filterCat(activeNav.dataset.cat, activeNav);
+            } else {
+                window.goHome(); 
+            }
+        };
+
+        function generateMovieCardHTML(p) {
+            let posterUrl = p.caratula || p.poster_path || p.poster_url || '';
+            if (typeof posterUrl === 'string') posterUrl = posterUrl.trim();
+            if (posterUrl && (posterUrl.startsWith('/') || !posterUrl.startsWith('http'))) {
+                posterUrl = `https://image.tmdb.org/t/p/w500${posterUrl}`;
+            } else if (!posterUrl) {
+                posterUrl = 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300';
+            }
+
+            const audioText = p.audio ? p.audio.trim().toUpperCase() : 'AC3';
+            const durationText = p.duracion || '----';
+            
+            let capitulosHTML = '';
+            if (p.capitulos) {
+                capitulosHTML = `<div class="meta-line"><span>Capítulos:</span><span class="val">${p.capitulos}</span></div>`;
+            }
+
+            return `
+                <div class="film-card" onclick="window.showDetails('${p.id}')">
+                    <div class="poster-container">
+                        <img src="${posterUrl}" class="poster-img" alt="${p.titulo || 'Película'}" loading="lazy" onerror="this.src='https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300'"/>
+                        <div class="card-tag-badge">${p.resolucion || p.calidad || 'SD'}</div>
+                        <div class="card-audio-badge">${audioText}</div>
+                    </div>
+         
+                    <div class="card-details">
+                        <div class="card-name">${p.titulo || 'Sin título'}</div>
+                        <div class="card-meta-box">
+                            <div class="meta-line"><span>Año:</span><span class="val">${p.anio || '----'}</span></div>
+                            ${capitulosHTML}
+                            <div class="meta-line"><span>Duración:</span><span class="val">${durationText}</span></div>
+                            <div class="meta-line"><span>Tamaño:</span><span class="val gb">${p.tamano_gb || p.tamano || 0} GB</span></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function buildGroupedArray(list) {
+            const result = [];
+            const grouped = {};
+
+            list.forEach(item => {
+                const cat = (item.categoria || '').trim();
+                const rawSaga = (item.saga || '').trim();
+                const sagaKey = normalizeStr(item.saga); 
+                
+                const itemDate = item.fecha_incorporacion ? new Date(item.fecha_incorporacion).getTime() : 0;
+                
+                if (sagaKey !== '') {
+                    if (!grouped[sagaKey]) {
+                        const catLower = cat.toLowerCase();
+                        let groupType = 'Saga';
+                        if (catLower === 'series' || catLower === 'serie') groupType = 'Serie';
+                        else if (catLower === 'shows' || catLower === 'show') groupType = 'Show';
+
+                        grouped[sagaKey] = {
+                            isGroup: true,
+                            type: groupType,
+                            name: rawSaga, 
+                            key: sagaKey,
+                            items: [],
+                            sortDate: 0
+                        };
+                        result.push(grouped[sagaKey]);
+                    }
+                    grouped[sagaKey].items.push(item);
+                    if (itemDate > grouped[sagaKey].sortDate) {
+                        grouped[sagaKey].sortDate = itemDate;
+                    }
+                } else {
+                    result.push({
+                        isGroup: false,
+                        item: item,
+                        sortDate: itemDate
+                    });
+                }
+            });
+
+            result.forEach(p => {
+                if (p.isGroup) {
+                    p.items.sort((a, b) => {
+                        const anioA = a.anio || 0;
+                        const anioB = b.anio || 0;
+                        if (anioA !== anioB) return anioA - anioB;
+                        return (a.titulo || '').localeCompare(b.titulo || '');
+                    });
+                    const first = p.items[0];
+                    p.posterUrl = first.caratula || first.poster_path || first.poster_url || '';
+                    p.totalGB = p.items.reduce((acc, x) => acc + (Number(x.tamano_gb) || Number(x.tamano) || 0), 0).toFixed(1);
+                    p.count = p.items.length;
+                }
+            });
+
+            return result;
+        }
+
+        window.renderGrid = (groupedArray) => {
+            const gridContainer = document.getElementById('grid');
+    
+            if (!groupedArray || groupedArray.length === 0) {
+                gridContainer.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 40px 0;">No hay contenido disponible en esta selección.</div>`;
+                return;
+            }
+
+            gridContainer.innerHTML = groupedArray.map(p => {
+                if (p.isGroup) {
+                    let posterUrl = p.posterUrl;
+                    if (posterUrl && (posterUrl.startsWith('/') || !posterUrl.startsWith('http'))) {
+                        posterUrl = `https://image.tmdb.org/t/p/w500${posterUrl}`;
+                    } else if (!posterUrl) {
+                        posterUrl = 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300';
+                    }
+
+                    let badgeText = 'SAGA';
+                    let countText = `${p.count} Películas`;
+                    
+                    if (p.type === 'Serie') {
+                        badgeText = 'SERIE';
+                        countText = `${p.count} Temporadas`;
+                    } else if (p.type === 'Show') {
+                        badgeText = 'SHOW';
+                        countText = `${p.count} Programas`;
+                    }
+
+                    const safeKey = p.key.replace(/'/g, "\\'");
+                    
+                    const totalGBNum = parseFloat(p.totalGB);
+                    const sizeStr = totalGBNum < 1024 ? totalGBNum.toFixed(1) + ' GB' : (totalGBNum / 1024).toFixed(1) + ' TB';
+
+                    return `
+                        <div class="film-card" style="border-color: var(--color-accent);" onclick="window.openGroup('${safeKey}')">
+                            <div class="poster-container">
+                                <img src="${posterUrl}" class="poster-img" alt="${p.name}" loading="lazy" onerror="this.src='https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300'"/>
+                                <div class="card-tag-badge" style="background: var(--color-accent);">${badgeText}</div>
+                            </div>
+                 
+                            <div class="card-details">
+                                <div class="card-name" style="color: var(--color-accent);">${p.name}</div>
+                                <div class="card-meta-box">
+                                    <div class="meta-line"><span>Contenido:</span><span class="val" style="color: var(--color-accent); font-weight: 700;">${countText}</span></div>
+                                    <div class="meta-line"><span>Tamaño Total:</span><span class="val gb" style="color: var(--color-accent); font-weight: 700;">${sizeStr}</span></div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    return generateMovieCardHTML(p.item);
+                }
+            }).join('');
+        };
+
+        window.applySortAndRender = () => {
+            if (!window.currentViewContext.data) return;
+            const sortVal = document.getElementById('sort-select').value;
+            let toRender = [...window.currentViewContext.data];
+            
+            toRender.sort((a, b) => {
+                const itemA = a.isGroup ? a.items[0] : a.item;
+                const itemB = b.isGroup ? b.items[0] : b.item;
+                const titleA = a.isGroup ? a.name : (itemA.titulo || '');
+                const titleB = b.isGroup ? b.name : (itemB.titulo || '');
+                
+                if (sortVal === 'year-desc') return (itemB.anio || 0) - (itemA.anio || 0);
+                if (sortVal === 'year-asc') return (itemA.anio || 0) - (itemB.anio || 0);
+                if (sortVal === 'az') return titleA.localeCompare(titleB);
+                if (sortVal === 'za') return titleB.localeCompare(titleA);
+                
+                if (sortVal === 'size-desc') {
+                    const sizeA = a.isGroup ? parseFloat(a.totalGB) : (Number(itemA.tamano_gb) || Number(itemA.tamano) || 0);
+                    const sizeB = b.isGroup ? parseFloat(b.totalGB) : (Number(itemB.tamano_gb) || Number(itemB.tamano) || 0);
+                    return sizeB - sizeA;
+                }
+                if (sortVal === 'size-asc') {
+                    const sizeA = a.isGroup ? parseFloat(a.totalGB) : (Number(itemA.tamano_gb) || Number(itemA.tamano) || 0);
+                    const sizeB = b.isGroup ? parseFloat(b.totalGB) : (Number(itemB.tamano_gb) || Number(itemB.tamano) || 0);
+                    return sizeA - sizeB;
+                }
+                return 0;
+            });
+            
+            if (window.currentViewContext.type === 'home') {
+                toRender = toRender.slice(0, 12);
+            }
+            
+            window.renderGrid(toRender);
+        };
+
+        document.getElementById('sort-select').addEventListener('change', () => {
+            window.applySortAndRender();
+        });
+
+        window.openGroup = (groupKey) => {
+            const items = DATA.filter(x => normalizeStr(x.saga) === groupKey);
+            if(!items.length) return;
+
+            const groupName = items[0].saga.trim();
+            const cat = (items[0].categoria || '').trim().toLowerCase();
+            
+            let type = 'Saga';
+            if (cat === 'series' || cat === 'serie') type = 'Serie';
+            else if (cat === 'shows' || cat === 'show') type = 'Show';
+            
+            document.getElementById('view-title').innerHTML = `${type}:<span>${groupName}</span>`;
+            document.getElementById('search-input').value = ''; 
+            
+            document.getElementById('sort-select').style.display = 'none';
+
+            const gridContainer = document.getElementById('grid');
+            
+            items.sort((a, b) => {
+                if (type === 'Serie' || type === 'Show') {
+                    const tA = Number(a.temporada) || 0;
+                    const tB = Number(b.temporada) || 0;
+                    if (tA !== tB) return tA - tB;
+                    
+                    return (a.titulo || '').localeCompare(b.titulo || '');
+                }
+                return (a.anio || 0) - (b.anio || 0); 
+            });
+            
+            const itemsHTML = items.map(p => generateMovieCardHTML(p)).join('');
+
+            const btnVolver = `
+                <div style="grid-column: 1/-1; display: flex; justify-content: center; margin-top: 40px; margin-bottom: 20px;">
+                    <button onclick="window.goBack()" class="btn-secondary" style="border-width: 2px; padding: 12px 40px; border-radius: 12px; border-color: var(--color-accent); color: var(--color-accent);" onmouseover="this.style.background='var(--color-accent)'; this.style.color='#fff';" onmouseout="this.style.background='transparent'; this.style.color='var(--color-accent)';">
+                        ⬅ VOLVER AL CATÁLOGO
+                    </button>
+                </div>
+            `;
+            
+            gridContainer.innerHTML = itemsHTML + btnVolver;
+        };
+
+        window.showDetails = async (id) => {
+            const p = DATA.find(x => String(x.id) === String(id));
+            if (!p) return;
+
+            const audioText = p.audio ? p.audio.trim().toUpperCase() : 'AC3';
+
+            document.getElementById('modal-title').innerText = p.titulo || 'Desconocido';
+            
+            let subtitleExtras = '';
+            if (p.capitulos) {
+                subtitleExtras = ` • ${p.capitulos} Capítulos`;
+            }
+            
+            const sizeGB = p.tamano_gb ? `${p.tamano_gb} GB` : (p.tamano ? `${p.tamano} GB` : '0 GB');
+            document.getElementById('modal-subtitle').innerText = `${p.anio || '----'}${subtitleExtras} • ${p.duracion || '----'} • ${p.resolucion || p.calidad || 'SD'} • ${audioText} • ${sizeGB}`;
+            
+            const adminEditContainer = document.getElementById('modal-admin-edit');
+            if (window.USER_ROLE === 'admin') {
+                adminEditContainer.innerHTML = `
+                    <button onclick="window.location.href='/admin?edit=${p.id}'" class="admin-edit-icon" title="Editar Contenido">
+                        ✏️
+                    </button>
+                `;
+            } else {
+                adminEditContainer.innerHTML = '';
+            }
+
+            document.getElementById('modal-synopsis').innerHTML = '<span style="color:var(--color-accent);">Conectando con TMDB para obtener datos...</span>';
+            document.getElementById('modal-cast').innerHTML = '';
+
+            let posterUrl = p.caratula || p.poster_path || p.poster_url || '';
+            if (typeof posterUrl === 'string') posterUrl = posterUrl.trim();
+            if (posterUrl && (posterUrl.startsWith('/') || !posterUrl.startsWith('http'))) {
+                posterUrl = `https://image.tmdb.org/t/p/w500${posterUrl}`;
+            } else if (!posterUrl) {
+                posterUrl = 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300';
+            }
+            document.getElementById('modal-poster').src = posterUrl;
+            document.getElementById('movie-modal').classList.add('active');
+
+            try {
+                let detailsData = null;
+                const categoriaFiltro = (p.categoria || '').trim().toLowerCase();
+                const isTv = ['series', 'serie', 'shows', 'show'].includes(categoriaFiltro);
+
+                if (p.tmdb_id) {
+                    if (isTv) {
+                        const seasonMatch = (p.titulo || '').match(/\(Temporada\s+(\d+)\)/i);
+                        
+                        if (seasonMatch && seasonMatch[1]) {
+                            const seasonNum = seasonMatch[1];
+                            const res = await fetch(`https://api.themoviedb.org/3/tv/${p.tmdb_id}/season/${seasonNum}?api_key=${tmdbKey}&language=es-ES&append_to_response=credits`);
+                            detailsData = await res.json();
+                            
+                            if (!detailsData.overview) {
+                                const baseRes = await fetch(`https://api.themoviedb.org/3/tv/${p.tmdb_id}?api_key=${tmdbKey}&language=es-ES`);
+                                const baseData = await baseRes.json();
+                                if (baseData.overview) detailsData.overview = baseData.overview;
+                            }
+                        } else {
+                            const res = await fetch(`https://api.themoviedb.org/3/tv/${p.tmdb_id}?api_key=${tmdbKey}&language=es-ES&append_to_response=credits`);
+                            detailsData = await res.json();
+                        }
+                    } else {
+                        const res = await fetch(`https://api.themoviedb.org/3/movie/${p.tmdb_id}?api_key=${tmdbKey}&language=es-ES&append_to_response=credits`);
+                        detailsData = await res.json();
+                    }
+                } else {
+                    const query = encodeURIComponent(p.titulo);
+                    let searchUrl = `https://api.themoviedb.org/3/search/${isTv ? 'tv' : 'movie'}?api_key=${tmdbKey}&query=${query}&language=es-ES`;
+                    if (p.anio && !isTv) searchUrl += `&year=${p.anio}`;
+
+                    const searchRes = await fetch(searchUrl);
+                    const searchData = await searchRes.json();
+
+                    if (searchData.results && searchData.results.length > 0) {
+                        const tmdbId = searchData.results[0].id;
+                        const endpoint = isTv ? 'tv' : 'movie';
+                        const detailsRes = await fetch(`https://api.themoviedb.org/3/${endpoint}/${tmdbId}?api_key=${tmdbKey}&language=es-ES&append_to_response=credits`);
+                        detailsData = await detailsRes.json();
+                    }
+                }
+
+                if (detailsData) {
+                    document.getElementById('modal-synopsis').innerText = detailsData.overview || 'No hay sinopsis disponible en TMDB para este contenido.';
+                    
+                    if (detailsData.credits && detailsData.credits.cast && detailsData.credits.cast.length > 0) {
+                        const topCast = detailsData.credits.cast.slice(0, 8);
+                        document.getElementById('modal-cast').innerHTML = topCast.map(actor => `<div class="cast-badge">${actor.name}</div>`).join('');
+                    } else {
+                        document.getElementById('modal-cast').innerHTML = '<span style="color:var(--text-muted);">Reparto no disponible.</span>';
+                    }
+                } else {
+                    document.getElementById('modal-synopsis').innerText = 'No se han encontrado resultados adicionales en la base de datos de TMDB.';
+                }
+            } catch (error) {
+                document.getElementById('modal-synopsis').innerText = 'Error de conexión al intentar obtener los datos.';
+            }
+        };
+
+        window.goHome = () => {
+            document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('active'));
+            document.getElementById('btn-home').classList.add('active');
+            document.getElementById('view-title').innerHTML = `Últimas<span>Incorporaciones</span>`;
+            document.getElementById('search-input').value = ''; 
+            
+            document.getElementById('sort-select').style.display = 'none';
+            
+            const grouped = buildGroupedArray(DATA);
+            grouped.sort((a,b) => b.sortDate - a.sortDate);
+            
+            window.currentViewContext = { type: 'home', data: grouped };
+            window.renderGrid(grouped.slice(0, 12));
+        };
+        
+        window.filterCat = (name, el) => {
+            document.querySelectorAll('.nav-link').forEach(i => i.classList.remove('active'));
+            document.getElementById('btn-home').classList.remove('active');
+            el.classList.add('active');
+            
+            let visualHeader = name;
+            if (name === 'Animacion') visualHeader = 'Animación';
+            if (name === 'Clasico') visualHeader = 'Clásico';
+            document.getElementById('view-title').innerHTML = visualHeader;
+            document.getElementById('search-input').value = ''; 
+            
+            const nameLower = name.toLowerCase();
+            const filtered = DATA.filter(p => {
+                const pCat = (p.categoria || '').trim().toLowerCase();
+                if (nameLower === 'shows' && pCat === 'show') return true;
+                return pCat === nameLower;
+            });
+            
+            document.getElementById('sort-select').style.display = 'block';
+            window.currentViewContext = { type: 'cat', data: buildGroupedArray(filtered) };
+            window.applySortAndRender();
+        };
+        
+        document.getElementById('search-input').addEventListener('input', (e) => {
+            const query = normalizeStr(e.target.value);
+            
+            if (query === '') {
+                window.goBack();
+                return;
+            }
+
+            document.getElementById('view-title').innerHTML = `Búsqueda:<span>"${e.target.value}"</span>`;
+            
+            const filtered = DATA.filter(p => 
+                normalizeStr(p.titulo).includes(query) || 
+                normalizeStr(p.saga).includes(query)
+            );
+            
+            document.getElementById('sort-select').style.display = 'block';
+            window.currentViewContext = { type: 'search', data: buildGroupedArray(filtered) };
+            window.applySortAndRender();
+        });
+
+        async function init() {
+            const { data: authData } = await supabase.auth.getSession();
+            if (!authData?.session?.user) {
+                window.location.replace('/');
+                return;
+            }
+            
+            const currentUser = authData.session.user;
+            localStorage.setItem('user_email', currentUser.email);
+            document.body.classList.add('auth-ok');
+
+            // 1. OBTENER ROL (El resto del UI de usuario lo procesa MenuLateral.astro)
+            const { data: profile } = await supabase.from('perfiles').select('*').eq('email', currentUser.email).maybeSingle();
+            const role = (profile?.rol || 'User').toLowerCase().trim();
+            window.USER_ROLE = role;
+
+            // 2. CARGA DE CATÁLOGO
+            let allMovies = [];
+            let startRow = 0;
+            const limit = 1000;
+            let fetching = true;
+
+            while (fetching) {
+                const { data, error } = await supabase
+                    .from('filmoteca')
+                    .select('*')
+                    .range(startRow, startRow + limit - 1);
+                
+                if (error) {
+                    console.error("Error al descargar desde Supabase:", error);
+                    break;
+                }
+                
+                if (data && data.length > 0) {
+                    allMovies = allMovies.concat(data);
+                    startRow += limit;
+                    
+                    if (data.length < limit) {
+                        fetching = false;
+                    }
+                } else {
+                    fetching = false;
+                }
+            }
+            
+            if (allMovies.length > 0) {
+                DATA = allMovies;
+                
+                const cats = ['Cine', 'Clasico', 'Animacion', 'Documentales', 'Series', 'Shows'];
+                
+                document.getElementById('cat-list').innerHTML = cats.map(c => {
+                    const cLower = c.toLowerCase();
+                    const f = DATA.filter(x => {
+                        const xCat = (x.categoria || '').trim().toLowerCase();
+                        if (cLower === 'shows' && xCat === 'show') return true;
+                        return xCat === cLower;
+                    });
+                    
+                    let itemsCount = f.length;
+                    if (cLower === 'series' || cLower === 'shows') {
+                        const uniqueSagas = new Set();
+                        f.forEach(x => {
+                            const s = (x.saga || '').trim().toLowerCase();
+                            if (s) uniqueSagas.add(s);
+                            else uniqueSagas.add((x.titulo || '').trim().toLowerCase());
+                        });
+                        itemsCount = uniqueSagas.size;
+                    }
+
+                    const totalGB = f.reduce((a, b) => a + (Number(b.tamano_gb) || Number(b.tamano) || 0), 0);
+                    const sizeStr = totalGB < 1024 ? totalGB.toFixed(1) + ' GB' : (totalGB / 1024).toFixed(1) + ' TB';
+                    
+                    let visualLabel = c;
+                    if (c === 'Animacion') visualLabel = 'Animación';
+                    if (c === 'Clasico') visualLabel = 'Clásico';
+
+                    return `
+                        <div class="nav-link" data-cat="${c}" onclick="window.filterCat('${c}', this)">
+                            <span>${visualLabel}</span>
+                            <span class="text-gray-dim">${itemsCount} / ${sizeStr}</span>
+                        </div>
+                    `;
+                }).join('');
+                
+                const quals = ['UHD', 'FHD', 'HD', 'SD'];
+                document.getElementById('stats-list').innerHTML = quals.map(q => {
+                    const f = DATA.filter(x => x.resolucion === q || x.calidad === q);
+                    const totalGB = f.reduce((a, b) => a + (Number(b.tamano_gb) || Number(b.tamano) || 0), 0);
+                    const sizeStr = totalGB < 1024 ? totalGB.toFixed(1) + ' GB' : (totalGB / 1024).toFixed(1) + ' TB';
+                    return `
+                        <div class="stat-row">
+                            <span class="stat-label">${q}</span>
+                            <span class="text-gray-dim">${f.length} / ${sizeStr}</span>
+                        </div>
+                    `;
+                }).join('');
+                
+                const usedGB = DATA.reduce((acc, p) => acc + (Number(p.tamano_gb) || Number(p.tamano) || 0), 0);
+                const perc = (usedGB / (32 * 1024) * 100).toFixed(1);
+                const usedStr = usedGB < 1024 ? usedGB.toFixed(1) + ' GB' : (usedGB / 1024).toFixed(1) + ' TB';
+                
+                document.getElementById('bar-fill').style.clipPath = `inset(0 ${100 - perc}% 0 0)`;
+                document.getElementById('txt-perc').innerText = perc + '%';
+                document.getElementById('txt-used').innerText = usedStr;
+
+                window.goHome();
+            }
+        }
+
+        init();
+    </script>
+</Layout>

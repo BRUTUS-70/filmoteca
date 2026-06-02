@@ -1,0 +1,765 @@
+---
+// src/pages/deseos.astro
+import Layout from '../layouts/Layout.astro';
+import MenuLateral from '../components/MenuLateral.astro';
+export const prerender = false;
+---
+
+<Layout title="Lista de Deseos | Filmoteca">
+    <MenuLateral modoSecundario={true}>
+        <div class="section-label" style="margin-top: 10px;">Lista de Deseos</div>
+
+        <div id="admin-nav-container"></div>
+    </MenuLateral>
+
+    <main>
+        <div class="header-bar">
+            <h2 class="view-title-main">Lista de<span>Deseos</span></h2>
+            <button onclick="window.openWishModal()" class="btn-primary">➕ Añadir Petición</button>
+        </div>
+        <div id="grid-wishlist" class="film-grid">
+            <div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 60px 0; font-size: 1.1rem;">
+                Cargando peticiones...
+            </div>
+        </div>
+    </main>
+
+    <div id="toast-container" class="toast" style="z-index: 99999;"></div>
+
+    <div id="wish-info-modal" class="modal-overlay" onclick="if(event.target === this) window.closeModal('wish-info-modal')">
+        <div class="modal-content" style="max-width: 700px; padding: 30px; display: flex; flex-direction: column; gap: 20px;">
+            <div class="modal-close" onclick="window.closeModal('wish-info-modal')">✖</div>
+            <div style="display: flex; gap: 25px; flex-wrap: wrap;">
+                <div class="modal-left" style="width: 200px; max-width: 200px;">
+                    <img id="wi-poster" class="modal-poster" src="" alt="Poster" />
+                </div>
+                <div class="modal-right">
+                    <h2 id="wi-title" class="modal-title" style="font-size: 1.8rem;">Cargando...</h2>
+                    <div id="wi-meta" class="modal-subtitle" style="margin-bottom: 20px;"></div>
+                    
+                    <div class="modal-section-title">Sinopsis</div>
+                    <p id="wi-synopsis" class="modal-synopsis" style="margin-bottom: 20px;">Buscando información...</p>
+                    
+                    <div class="modal-section-title">Reparto Principal</div>
+                    <div id="wi-cast" class="modal-cast-grid"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="wish-modal" class="modal-overlay" onclick="if(event.target === this) window.closeModal('wish-modal')">
+        <div class="modal-content" style="max-width: 800px; padding: 40px; flex-direction: column;">
+            <div class="modal-close" onclick="window.closeModal('wish-modal')">✖</div>
+            <h3 class="modal-title" style="margin-bottom: 30px; font-size: 1.8rem;">Añadir a Lista de Deseos</h3>
+            
+            <form id="form-wish" onsubmit="window.saveWish(event)">
+                <div style="display: flex; flex-direction: column; gap: 20px; margin-bottom: 30px;">
+                    <div style="display: flex; flex-direction: column;">
+                        <label class="input-label" style="color: var(--color-accent);">Buscar contenido</label>
+                        <input type="text" id="fw-titulo" required class="input-dark" oninput="window.searchTmdbWish(this.value)" autocomplete="off" placeholder="Escribe para buscar (ej: Alien)..."/>
+                        
+                        <div id="fw-tmdb-results" style="display: none; background: #1a1a1a; border: 1px solid var(--border-color); border-radius: 8px; margin-top: 12px; max-height: 400px; overflow-y: auto; padding: 10px; box-shadow: inset 0 2px 10px rgba(0,0,0,0.2); grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                        </div>
+                    </div>
+                </div>
+                
+                <input type="hidden" id="fw-anio" />
+                <input type="hidden" id="fw-caratula" />
+
+                <div style="display: flex; justify-content: flex-end; gap: 15px;">
+                    <button type="button" onclick="window.closeModal('wish-modal')" class="btn-secondary">Cancelar</button>
+                    <button type="submit" id="btn-save-wish" class="btn-primary">⭐ Solicitar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div id="confirm-modal" class="modal-overlay" style="z-index: 100000;" onclick="if(event.target === this) window.closeConfirmModal()">
+        <div class="modal-content" style="max-width: 420px; width: 90%; padding: 30px; text-align: center; flex-direction: column; align-items: center; box-sizing: border-box; border-color: #e74c3c;">
+            <div style="font-size: 3rem; margin-bottom: 15px; line-height: 1;">⚠️</div>
+            <h3 class="modal-title" style="margin-top: 0; margin-bottom: 10px; font-size: 1.5rem; width: 100%;">Confirmar Acción</h3>
+            <p id="confirm-msg" style="color: var(--text-muted); margin-bottom: 30px; line-height: 1.5; font-size: 1rem; width: 100%; white-space: normal; word-wrap: break-word;">¿Estás seguro?</p>
+            <div style="display: flex; gap: 15px; justify-content: center; width: 100%;">
+                <button type="button" onclick="window.closeConfirmModal()" class="btn-secondary">Cancelar</button>
+                <button type="button" id="btn-confirm-action" class="btn-danger-solid">Eliminar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="content-modal" class="modal-overlay" onclick="if(event.target === this) window.closeModal('content-modal')">
+        <div class="modal-content" style="max-width: 900px; padding: 40px;">
+            <div class="modal-close" onclick="window.closeModal('content-modal')">✖</div>
+            
+            <div class="modal-left">
+                <img id="modal-content-poster" class="modal-poster" src="" alt="Poster" />
+            </div>
+            
+            <div class="modal-right">
+                <div class="modal-section-title" id="modal-content-header" style="margin-top: 0; margin-bottom: 5px;">Añadir a la Filmoteca</div>
+                <div id="modal-content-title" class="modal-title" style="font-size: 1.8rem; margin-bottom: 25px;">Cargando...</div>
+                
+                <form id="form-content" onsubmit="window.saveContent(event)">
+                    <input type="hidden" id="fc-id" />
+                    <input type="hidden" id="fc-caratula" />
+                    <input type="hidden" id="fc-wish-id" />
+                    <input type="hidden" id="fc-tmdb-id" />
+                    
+                    <div style="background: #222; padding: 15px; border-radius: 8px; border: 1px dashed var(--color-accent); margin-bottom: 25px;">
+                        <label class="input-label" style="color: var(--color-accent);">Búsqueda de sinopsis y reparto</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" id="fc-tmdb-search" class="input-dark" placeholder="Buscar título original..." autocomplete="off" oninput="window.searchTmdbLink(this.value)" />
+                            <button type="button" onclick="window.clearTmdbLink()" class="btn-secondary" style="padding: 0 15px;">Revincular</button>
+                        </div>
+                        <div id="fc-tmdb-status" style="font-size: 0.8rem; margin-top: 8px; color: #2ecc71; display: none; font-weight: 600;">✅ Vinculado al ID original: <span id="fc-tmdb-id-display"></span></div>
+                        <div id="fc-tmdb-results" style="display: none; background: #1a1a1a; border: 1px solid var(--border-color); border-radius: 8px; margin-top: 10px; max-height: 250px; overflow-y: auto; padding: 10px; grid-template-columns: repeat(3, 1fr); gap: 10px;"></div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px;">
+                        <div>
+                            <label class="input-label">Título Local</label>
+                            <input type="text" id="fc-titulo" required class="input-dark" />
+                        </div>
+                        <div>
+                            <label class="input-label">Año</label>
+                            <input type="number" id="fc-anio" required class="input-dark" />
+                        </div>
+                        <div>
+                            <label class="input-label">Duración (ej. 2h 15m)</label>
+                            <input type="text" id="fc-duracion" class="input-dark" />
+                        </div>
+                        <div>
+                            <label class="input-label">Categoría</label>
+                            <select id="fc-categoria" required class="input-dark">
+                                <option value="Cine">Cine</option>
+                                <option value="Clasico">Clásico</option>
+                                <option value="Animacion">Animación</option>
+                                <option value="Documentales">Documentales</option>
+                                <option value="Series">Series</option>
+                                <option value="Shows">Shows</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="input-label">Resolución</label>
+                            <select id="fc-resolucion" required class="input-dark">
+                                <option value="UHD">UHD</option>
+                                <option value="FHD" selected>FHD</option>
+                                <option value="HD">HD</option>
+                                <option value="SD">SD</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="input-label">Audio</label>
+                            <input type="text" id="fc-audio" required class="input-dark" list="audio-list" autocomplete="off" placeholder="Selecciona o escribe..." />
+                            <datalist id="audio-list"></datalist>
+                        </div>
+                        <div>
+                            <label class="input-label">Tamaño (GB)</label>
+                            <input type="number" step="0.01" id="fc-tamano" required class="input-dark" />
+                        </div>
+                        <div>
+                            <label class="input-label">Saga / Serie</label>
+                            <input type="text" id="fc-saga" class="input-dark" placeholder="Ej: Harry Potter" />
+                        </div>
+                        <div>
+                            <label class="input-label">Capítulos (Series)</label>
+                            <input type="number" id="fc-capitulos" class="input-dark" />
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; justify-content: flex-end; gap: 15px; margin-top: 20px;">
+                        <button type="button" onclick="window.closeModal('content-modal')" class="btn-secondary">Cancelar</button>
+                        <button type="submit" id="btn-save-content" class="btn-primary">💾 Añadir y Eliminar Petición</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        import { createClient } from '@supabase/supabase-js'
+        
+        const supabase = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.PUBLIC_SUPABASE_ANON_KEY);
+        const tmdbKey = import.meta.env.PUBLIC_TMDB_KEY; 
+
+        let DATA_DB = [];
+        let DATA_USERS = [];
+        let DATA_WISH = [];
+        
+        let searchTimeout = null;
+        let linkSearchTimeout = null;
+        let pendingConfirmCallback = null;
+
+        window.showToast = (msg, isError = false) => {
+            const t = document.getElementById('toast-container');
+            t.innerText = msg;
+            t.className = 'toast show' + (isError ? ' error' : '');
+            setTimeout(() => t.classList.remove('show'), 4000);
+        };
+
+        window.showConfirm = (msg, callback) => {
+            document.getElementById('confirm-msg').innerText = msg;
+            pendingConfirmCallback = callback;
+            document.getElementById('confirm-modal').classList.add('active');
+        };
+
+        window.closeConfirmModal = () => {
+            document.getElementById('confirm-modal').classList.remove('active');
+            pendingConfirmCallback = null;
+        };
+
+        document.getElementById('btn-confirm-action').addEventListener('click', () => {
+            if (pendingConfirmCallback) pendingConfirmCallback();
+            window.closeConfirmModal();
+        });
+
+        async function init() {
+            const { data: authData } = await supabase.auth.getSession();
+            if (!authData?.session?.user) {
+                window.location.replace('/');
+                return;
+            }
+            
+            const currentUser = authData.session.user;
+            window.CURRENT_USER_ID = currentUser.id;
+            document.body.classList.add('auth-ok');
+
+            const { data: profile } = await supabase.from('perfiles').select('*').eq('id', currentUser.id).maybeSingle();
+            
+            const role = (profile?.rol || 'User').toLowerCase().trim();
+            window.USER_ROLE = role;
+
+            const adminNavEl = document.getElementById('admin-nav-container');
+            if (role === 'admin' && adminNavEl) {
+                adminNavEl.innerHTML = `
+                    <div class="nav-separator"></div>
+                    <div class="nav-link" onclick="window.location.href='/admin'">
+                        <span>⚙️ Panel de Control</span>
+                    </div>
+                `;
+            }
+
+            await fetchData();
+            if (window.USER_ROLE === 'admin') populateAudioList();
+            renderWishlist();
+        }
+
+        window.logout = async () => {
+            document.cookie = "sb-access-token=; path=/; max-age=0;";
+            document.cookie = "sb-refresh-token=; path=/; max-age=0;";
+            localStorage.clear();
+            await supabase.auth.signOut();
+            window.location.replace('/');
+        };
+
+        async function fetchData() {
+            const { data: dbData } = await supabase.from('filmoteca').select('*');
+            DATA_DB = dbData || [];
+            
+            const { data: uData } = await supabase.from('perfiles').select('*');
+            DATA_USERS = uData || [];
+
+            const { data: wData } = await supabase.from('lista_deseos').select('*');
+            DATA_WISH = wData || [];
+        }
+
+        function populateAudioList() {
+            const audioSet = new Set();
+            DATA_DB.forEach(p => { if(p.audio) audioSet.add(p.audio.trim().toUpperCase()); });
+            ['STEREO', '5.1', '7.1', 'MONO'].forEach(a => audioSet.add(a));
+            
+            const datalist = document.getElementById('audio-list');
+            if(datalist) datalist.innerHTML = Array.from(audioSet).sort().map(a => `<option value="${a}">`).join('');
+        }
+
+        window.closeModal = (modalId) => {
+            document.getElementById(modalId).classList.remove('active');
+            if (modalId === 'wish-modal') {
+                document.getElementById('fw-tmdb-results').style.display = 'none';
+            }
+            if (modalId === 'content-modal') {
+                document.getElementById('fc-tmdb-results').style.display = 'none';
+            }
+        };
+
+        function normalizeString(str) {
+            return (str || '').toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^\w\s]/gi, '').replace(/\s+/g, ' ').trim().toLowerCase();
+        }
+
+        function renderWishlist() {
+            const grid = document.getElementById('grid-wishlist');
+            
+            DATA_WISH.sort((a, b) => (a.titulo || '').localeCompare(b.titulo || ''));
+
+            if (DATA_WISH.length === 0) {
+                grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 40px 0;">La lista de deseos está vacía. Aporta tus ideas para la filmoteca.</div>`;
+                return;
+            }
+
+            grid.innerHTML = DATA_WISH.map(w => {
+                const user = DATA_USERS.find(u => u.id === w.user_id) || { email: 'Usuario Desconocido' };
+                const metaName = user.user_metadata?.nombre || user.user_metadata?.name || user.user_metadata?.alias;
+                const displayName = (user.nombre && user.nombre.trim() !== '') ? user.nombre : (metaName || user.email);
+                
+                let posterUrl = w.poster_url || w.caratula || '';
+                if (typeof posterUrl === 'string') posterUrl = posterUrl.trim();
+                if (posterUrl && (posterUrl.startsWith('/') || !posterUrl.startsWith('http'))) {
+                    posterUrl = `https://image.tmdb.org/t/p/w500${posterUrl}`;
+                } else if (!posterUrl) {
+                    posterUrl = 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300';
+                }
+
+                const isOwner = w.user_id === window.CURRENT_USER_ID;
+                const isAdmin = window.USER_ROLE === 'admin';
+                let actionButtons = '';
+
+                if (isAdmin) {
+                    const safeW = JSON.stringify(w).replace(/"/g, '&quot;');
+                    actionButtons = `
+                        <div style="display:flex; gap:5px; margin-top: auto;">
+                            <button onclick='window.approveWish(${safeW})' class="btn-primary" style="flex:1; padding: 6px; font-size:0.75rem;">✔ A Filmoteca</button>
+                            <button onclick='window.deleteWish("${w.id}")' class="btn-danger-solid" style="padding: 6px; background: transparent; border: 1px solid #e74c3c; color: #e74c3c;">✖</button>
+                        </div>
+                    `;
+                } else if (isOwner) {
+                    actionButtons = `
+                        <div style="display:flex; gap:5px; margin-top: auto;">
+                            <button onclick='window.deleteWish("${w.id}")' class="btn-danger-solid" style="width: 100%; padding: 6px; background: transparent; border: 1px solid #e74c3c; color: #e74c3c;">✖ Eliminar mi petición</button>
+                        </div>
+                    `;
+                } else {
+                    actionButtons = `<div style="margin-top: auto; height: 30px;"></div>`; 
+                }
+
+                return `
+                    <div class="film-card">
+                        <div class="poster-container" style="cursor: pointer;" onclick="window.showWishDetails('${w.id}')" title="Ver Detalles">
+                            <img src="${posterUrl}" class="poster-img" loading="lazy" onerror="this.src='https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300'" />
+                            <div class="card-tag-badge" style="background: var(--color-accent);">PETICIÓN</div>
+                        </div>
+                        <div class="card-details">
+                            <div class="card-name">${w.titulo}</div>
+                            <div class="meta-line" style="margin-bottom: 4px;"><span>Año:</span><span class="val">${w.anio || '----'}</span></div>
+                            <div class="meta-line" style="margin-bottom: 8px;"><span>Solicitante:</span><span class="val" style="color:var(--color-accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px;" title="${displayName}">${displayName}</span></div>
+                            ${actionButtons}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        window.showWishDetails = async (id) => {
+            const w = DATA_WISH.find(x => String(x.id) === String(id));
+            if (!w) return;
+
+            document.getElementById('wi-title').innerText = w.titulo || 'Sin título';
+            document.getElementById('wi-meta').innerText = w.anio || 'Año desconocido';
+            document.getElementById('wi-synopsis').innerHTML = '<span style="color:var(--color-accent);">Conectando con TMDB para obtener datos...</span>';
+            document.getElementById('wi-cast').innerHTML = '';
+
+            let posterUrl = w.poster_url || w.caratula || '';
+            if (posterUrl && (posterUrl.startsWith('/') || !posterUrl.startsWith('http'))) {
+                posterUrl = `https://image.tmdb.org/t/p/w500${posterUrl}`;
+            } else if (!posterUrl) {
+                posterUrl = 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300';
+            }
+            document.getElementById('wi-poster').src = posterUrl;
+
+            document.getElementById('wish-info-modal').classList.add('active');
+
+            try {
+                const query = encodeURIComponent(w.titulo);
+                let searchUrl = `https://api.themoviedb.org/3/search/multi?api_key=${tmdbKey}&query=${query}&language=es-ES`;
+                const searchRes = await fetch(searchUrl);
+                const searchData = await searchRes.json();
+
+                let detailsData = null;
+                if (searchData.results && searchData.results.length > 0) {
+                    let match = searchData.results[0];
+                    if (w.anio) {
+                        const wYear = String(w.anio);
+                        const sameYear = searchData.results.find(r => {
+                            const d = r.release_date || r.first_air_date;
+                            return d && d.startsWith(wYear);
+                        });
+                        if (sameYear) match = sameYear;
+                    }
+
+                    const endpoint = match.media_type === 'tv' ? 'tv' : 'movie';
+                    const detailsRes = await fetch(`https://api.themoviedb.org/3/${endpoint}/${match.id}?api_key=${tmdbKey}&language=es-ES&append_to_response=credits`);
+                    detailsData = await detailsRes.json();
+                }
+
+                if (detailsData) {
+                    document.getElementById('wi-synopsis').innerText = detailsData.overview || 'No hay sinopsis disponible en TMDB para este contenido.';
+                    
+                    if (detailsData.credits && detailsData.credits.cast && detailsData.credits.cast.length > 0) {
+                        const topCast = detailsData.credits.cast.slice(0, 8);
+                        document.getElementById('wi-cast').innerHTML = topCast.map(actor => `<div class="cast-badge">${actor.name}</div>`).join('');
+                    } else {
+                        document.getElementById('wi-cast').innerHTML = '<span style="color:var(--text-muted);">Reparto no disponible.</span>';
+                    }
+                } else {
+                    document.getElementById('wi-synopsis').innerText = 'No se han encontrado resultados adicionales en la base de datos de TMDB.';
+                }
+            } catch (error) {
+                document.getElementById('wi-synopsis').innerText = 'Error de conexión al intentar obtener los datos.';
+            }
+        };
+
+        window.openWishModal = () => {
+            document.getElementById('form-wish').reset();
+            document.getElementById('fw-tmdb-results').innerHTML = '';
+            document.getElementById('fw-tmdb-results').style.display = 'none';
+            document.getElementById('fw-caratula').value = '';
+            document.getElementById('wish-modal').classList.add('active');
+        };
+
+        window.searchTmdbWish = (query) => {
+            const resultsBox = document.getElementById('fw-tmdb-results');
+            if (!query || query.length < 3) { 
+                resultsBox.style.display = 'none';
+                return; 
+            }
+            
+            if (searchTimeout) clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(async () => {
+                try {
+                    const [movieRes, tvRes] = await Promise.all([
+                        fetch(`https://api.themoviedb.org/3/search/movie?api_key=${tmdbKey}&query=${encodeURIComponent(query)}&language=es-ES`),
+                        fetch(`https://api.themoviedb.org/3/search/tv?api_key=${tmdbKey}&query=${encodeURIComponent(query)}&language=es-ES`)
+                    ]);
+                    
+                    const movieData = await movieRes.json();
+                    const tvData = await tvRes.json();
+                    
+                    const combined = [
+                        ...(movieData.results || []).map(m => ({ ...m, media_type: 'movie' })),
+                        ...(tvData.results || []).map(t => ({ ...t, media_type: 'tv' }))
+                    ];
+
+                    combined.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+                    const filtered = combined.slice(0, 10);
+                    
+                    if (filtered.length === 0) {
+                        resultsBox.innerHTML = '<div style="grid-column: 1/-1; padding: 10px; color: var(--text-muted); text-align: center;">No se encontraron resultados.</div>';
+                    } else {
+                        const html = filtered.map(item => {
+                            const title = item.title || item.name;
+                            const date = item.release_date || item.first_air_date;
+                            const year = date ? date.split('-')[0] : '';
+                            const typeLabel = item.media_type === 'tv' ? 'Serie' : 'Película';
+                            const thumbUrl = item.poster_path ? `https://image.tmdb.org/t/p/w154${item.poster_path}` : 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300';
+                            
+                            const safeItem = JSON.stringify(item).replace(/"/g, '&quot;');
+                            
+                            return `
+                                <div class="tmdb-wish-item" onclick="window.selectWishItem(${safeItem})">
+                                    <img src="${thumbUrl}" class="tmdb-wish-poster" onerror="this.src='https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300'" />
+                                    <div class="tmdb-wish-info">
+                                        <span class="tmdb-wish-title" title="${title}">${title}</span>
+                                        <span class="tmdb-wish-meta">${year} • ${typeLabel}</span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+                        resultsBox.innerHTML = html;
+                    }
+                    resultsBox.style.display = 'grid';
+                } catch (e) {}
+            }, 500);
+        };
+
+        window.selectWishItem = (item) => {
+            const title = item.title || item.name;
+            const date = item.release_date || item.first_air_date;
+            document.getElementById('fw-titulo').value = title;
+            document.getElementById('fw-anio').value = date ? date.split('-')[0] : '';
+            document.getElementById('fw-caratula').value = item.poster_path || '';
+            
+            const resultsBox = document.getElementById('fw-tmdb-results');
+            resultsBox.innerHTML = '<div style="grid-column: 1/-1; padding: 15px; color: var(--color-accent); font-weight: bold; text-align: center;">✔ Selección aplicada correctamente.</div>';
+            
+            setTimeout(() => {
+                resultsBox.style.display = 'none';
+            }, 1500);
+        };
+
+        document.addEventListener('click', (e) => {
+            const resultsBox = document.getElementById('fw-tmdb-results');
+            const inputField = document.getElementById('fw-titulo');
+            if (resultsBox && resultsBox.style.display === 'grid' && e.target !== inputField && !resultsBox.contains(e.target)) {
+                resultsBox.style.display = 'none';
+            }
+
+            const linkResultsBox = document.getElementById('fc-tmdb-results');
+            const linkInputField = document.getElementById('fc-tmdb-search');
+            if (linkResultsBox && linkResultsBox.style.display === 'grid' && e.target !== linkInputField && !resultsBox.contains(e.target)) {
+                linkResultsBox.style.display = 'none';
+            }
+        });
+
+        window.saveWish = async (e) => {
+            e.preventDefault();
+
+            const btn = document.getElementById('btn-save-wish');
+            btn.innerHTML = 'Solicitando...'; btn.disabled = true;
+            
+            const tituloVal = document.getElementById('fw-titulo').value.trim();
+            const normalizedTitle = normalizeString(tituloVal);
+
+            const existsInWishlist = DATA_WISH.find(w => normalizeString(w.titulo) === normalizedTitle);
+            if (existsInWishlist) {
+                window.showToast('Esta película ya está solicitada en la lista de deseos.', true);
+                btn.innerHTML = '⭐ Solicitar'; btn.disabled = false;
+                return;
+            }
+
+            const existsInDB = DATA_DB.find(p => normalizeString(p.titulo) === normalizedTitle);
+            if (existsInDB) {
+                window.showToast('Esta película ya se encuentra en la filmoteca.', true);
+                btn.innerHTML = '⭐ Solicitar'; btn.disabled = false;
+                return;
+            }
+            
+            const payload = {
+                titulo: tituloVal,
+                anio: document.getElementById('fw-anio').value || null,
+                user_id: window.CURRENT_USER_ID, 
+                poster_url: document.getElementById('fw-caratula').value || null
+            };
+
+            try {
+                const { error } = await supabase.from('lista_deseos').insert([payload]);
+                if (error) throw error;
+                
+                window.showToast('Petición añadida correctamente.');
+                window.closeModal('wish-modal');
+                await fetchData();
+                renderWishlist();
+            } catch (err) { 
+                window.showToast('Error SQL: ' + err.message, true); 
+            } finally {
+                btn.innerHTML = '⭐ Solicitar'; btn.disabled = false;
+            }
+        };
+
+        window.deleteWish = async (id) => {
+            window.showConfirm("¿Eliminar de la lista de deseos?", async () => {
+                try {
+                    const { error } = await supabase.from('lista_deseos').delete().eq('id', id);
+                    if (error) throw error;
+                    
+                    window.showToast('Petición eliminada.');
+                    await fetchData();
+                    renderWishlist();
+                } catch (err) {
+                    window.showToast('Error SQL: ' + err.message, true);
+                }
+            });
+        };
+
+        window.approveWish = async (wishData) => {
+            if(window.USER_ROLE !== 'admin') return;
+            const manualData = {
+                title: wishData.titulo,
+                release_date: wishData.anio ? `${wishData.anio}-01-01` : '',
+                poster_path: wishData.poster_url || wishData.caratula,
+                isTv: false
+            };
+            window.openContentModal(manualData, wishData.id);
+        };
+
+        window.openContentModal = async (data, wishId = null) => {
+            document.getElementById('fc-wish-id').value = wishId || '';
+            document.getElementById('fc-tmdb-id').value = data.id || '';
+            
+            const statusDiv = document.getElementById('fc-tmdb-status');
+            const searchInput = document.getElementById('fc-tmdb-search');
+            
+            if (data.id) {
+                statusDiv.style.display = 'block';
+                document.getElementById('fc-tmdb-id-display').innerText = data.id;
+                searchInput.placeholder = 'Buscar para cambiar vinculación...';
+            } else {
+                statusDiv.style.display = 'none';
+                searchInput.placeholder = 'Buscar título original...';
+            }
+            
+            document.getElementById('fc-tmdb-results').style.display = 'none';
+            document.getElementById('fc-tmdb-search').value = '';
+
+            const title = data.isTv ? data.name : data.title;
+            const date = data.isTv ? data.first_air_date : data.release_date;
+            const year = date ? date.split('-')[0] : '';
+            
+            document.getElementById('modal-content-poster').src = data.poster_path ? `https://image.tmdb.org/t/p/w500${data.poster_path}` : 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300';
+            document.getElementById('modal-content-title').innerText = title;
+            
+            document.getElementById('fc-id').value = '';
+            document.getElementById('fc-caratula').value = data.poster_path || '';
+            document.getElementById('fc-titulo').value = title;
+            document.getElementById('fc-anio').value = year;
+            document.getElementById('fc-duracion').value = '';
+            document.getElementById('fc-categoria').value = data.isTv ? 'Series' : 'Cine';
+            document.getElementById('fc-resolucion').value = 'FHD';
+            document.getElementById('fc-audio').value = '';
+            document.getElementById('fc-tamano').value = '';
+            document.getElementById('fc-saga').value = '';
+            document.getElementById('fc-capitulos').value = '';
+
+            if (!data.isTv && data.id) {
+                try {
+                    const dRes = await fetch(`https://api.themoviedb.org/3/movie/${data.id}?api_key=${tmdbKey}&language=es-ES`);
+                    const dData = await dRes.json();
+                    if (dData.runtime) {
+                        const h = Math.floor(dData.runtime / 60);
+                        const m = dData.runtime % 60;
+                        document.getElementById('fc-duracion').value = h > 0 ? `${h}h ${m}m` : `${m}m`;
+                    }
+                } catch (e) {}
+            }
+            document.getElementById('content-modal').classList.add('active');
+        };
+
+        window.searchTmdbLink = (query) => {
+            const resultsBox = document.getElementById('fc-tmdb-results');
+            const q = query.trim();
+            if (!q || (q.length < 3 && !/^\d+$/.test(q))) { 
+                resultsBox.style.display = 'none';
+                return; 
+            }
+            
+            if (linkSearchTimeout) clearTimeout(linkSearchTimeout);
+            linkSearchTimeout = setTimeout(async () => {
+                try {
+                    let combined = [];
+                    const isIdSearch = /^\d+$/.test(q);
+
+                    if (isIdSearch) {
+                        const [mRes, tRes] = await Promise.all([
+                            fetch(`https://api.themoviedb.org/3/movie/${q}?api_key=${tmdbKey}&language=es-ES`).catch(() => null),
+                            fetch(`https://api.themoviedb.org/3/tv/${q}?api_key=${tmdbKey}&language=es-ES`).catch(() => null)
+                        ]);
+                        
+                        const mData = mRes && mRes.ok ? await mRes.json() : null;
+                        const tData = tRes && tRes.ok ? await tRes.json() : null;
+                        
+                        if (mData && mData.id) combined.push({ ...mData, media_type: 'movie' });
+                        if (tData && tData.id) combined.push({ ...tData, media_type: 'tv' });
+                    } else {
+                        const [movieRes, tvRes] = await Promise.all([
+                            fetch(`https://api.themoviedb.org/3/search/movie?api_key=${tmdbKey}&query=${encodeURIComponent(q)}&language=es-ES`),
+                            fetch(`https://api.themoviedb.org/3/search/tv?api_key=${tmdbKey}&query=${encodeURIComponent(q)}&language=es-ES`)
+                        ]);
+                        
+                        const movieData = await movieRes.json();
+                        const tvData = await tvRes.json();
+                        
+                        combined = [
+                            ...(movieData.results || []).map(m => ({ ...m, media_type: 'movie' })),
+                            ...(tvData.results || []).map(t => ({ ...t, media_type: 'tv' }))
+                        ];
+                    }
+
+                    combined.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+                    const filtered = combined.slice(0, 10);
+                    
+                    if (filtered.length === 0) {
+                        resultsBox.innerHTML = '<div style="grid-column: 1/-1; padding: 10px; color: var(--text-muted); text-align: center;">No se encontraron resultados.</div>';
+                    } else {
+                        const html = filtered.map(item => {
+                            const title = item.title || item.name;
+                            const date = item.release_date || item.first_air_date;
+                            const year = date ? date.split('-')[0] : '';
+                            const typeLabel = item.media_type === 'tv' ? 'Serie' : 'Película';
+                            const thumbUrl = item.poster_path ? `https://image.tmdb.org/t/p/w154${item.poster_path}` : 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300';
+                            
+                            const safeItem = JSON.stringify(item).replace(/"/g, '&quot;');
+                            
+                            return `
+                                <div class="tmdb-wish-item" onclick="window.selectTmdbLink(${safeItem})">
+                                    <img src="${thumbUrl}" class="tmdb-wish-poster" onerror="this.src='https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300'" />
+                                    <div class="tmdb-wish-info">
+                                        <span class="tmdb-wish-title" title="${title}">${title}</span>
+                                        <span class="tmdb-wish-meta">${year} • ${typeLabel}</span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+                        resultsBox.innerHTML = html;
+                    }
+                    resultsBox.style.display = 'grid';
+                } catch (e) {}
+            }, 500);
+        };
+
+        window.selectTmdbLink = (item) => {
+            document.getElementById('fc-tmdb-id').value = item.id;
+            const caratulaInput = document.getElementById('fc-caratula');
+            if (!caratulaInput.value || caratulaInput.value.trim() === '') {
+                caratulaInput.value = item.poster_path || '';
+                document.getElementById('modal-content-poster').src = item.poster_path 
+                    ? `https://image.tmdb.org/t/p/w500${item.poster_path}` 
+                    : 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300';
+            }
+            
+            document.getElementById('fc-tmdb-status').style.display = 'block';
+            document.getElementById('fc-tmdb-id-display').innerText = item.id;
+            document.getElementById('fc-tmdb-results').style.display = 'none';
+            document.getElementById('fc-tmdb-search').value = '';
+            document.getElementById('fc-tmdb-search').placeholder = 'Buscar para cambiar vinculación...';
+        };
+
+        window.clearTmdbLink = () => {
+            document.getElementById('fc-tmdb-id').value = '';
+            document.getElementById('fc-tmdb-status').style.display = 'none';
+            document.getElementById('fc-tmdb-search').value = '';
+            document.getElementById('fc-tmdb-search').placeholder = 'Buscar título original...';
+        };
+
+        window.saveContent = async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('btn-save-content');
+            btn.innerHTML = 'Guardando...'; btn.disabled = true;
+
+            const wishId = document.getElementById('fc-wish-id').value;
+            const tmdbVal = document.getElementById('fc-tmdb-id').value;
+            
+            const payload = {
+                titulo: document.getElementById('fc-titulo').value.trim(),
+                anio: parseInt(document.getElementById('fc-anio').value) || null,
+                duracion: document.getElementById('fc-duracion').value.trim(),
+                categoria: document.getElementById('fc-categoria').value,
+                resolucion: document.getElementById('fc-resolucion').value,
+                audio: document.getElementById('fc-audio').value.trim(),
+                tamano_gb: parseFloat(document.getElementById('fc-tamano').value) || 0,
+                saga: document.getElementById('fc-saga').value.trim(),
+                capitulos: document.getElementById('fc-capitulos').value ? parseInt(document.getElementById('fc-capitulos').value) : null,
+                poster_url: document.getElementById('fc-caratula').value,
+                tmdb_id: tmdbVal ? parseInt(tmdbVal) : null,
+                fecha_incorporacion: new Date().toISOString().split('T')[0]
+            };
+
+            try {
+                const { error } = await supabase.from('filmoteca').insert([payload]);
+                if (error) throw error;
+                
+                if (wishId) {
+                    const { error: wError } = await supabase.from('lista_deseos').delete().eq('id', wishId);
+                    if (wError) console.error("Aviso: No se pudo limpiar la petición:", wError);
+                }
+                
+                window.showToast('¡Contenido añadido a tu filmoteca y borrado de deseos!');
+                window.closeModal('content-modal');
+                await fetchData();
+                renderWishlist();
+            } catch (err) { 
+                window.showToast('Error SQL: ' + err.message, true); 
+            } finally { 
+                btn.innerHTML = '💾 Añadir y Eliminar Petición'; btn.disabled = false; 
+            }
+        };
+
+        init();
+    </script>
+</Layout>

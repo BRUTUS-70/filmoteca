@@ -1,0 +1,180 @@
+---
+export const prerender = false;
+---
+<html lang="es">
+<head>
+    <meta charset="utf-8" />
+    <title>Acceso | Filmoteca Personal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --color-accent: #3b82f6; 
+            --color-accent-hover: #2563eb; 
+            --glow-shadow: rgba(59, 130, 246, 0.15);
+        }
+
+        body {
+            margin: 0; 
+            height: 100vh; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            background: linear-gradient(rgba(0,0,0,0.3), rgba(0,0,0,0.6)), 
+                        url('https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=2070') no-repeat center center/cover;
+            font-family: 'Plus Jakarta Sans', sans-serif; 
+            color: white;
+            overflow: hidden;
+        }
+        
+        .glass-card {
+            background: rgba(0, 0, 0, 0.75); 
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1); 
+            padding: 4rem 3rem; 
+            border-radius: 32px;
+            text-align: center; 
+            width: 90%; 
+            max-width: 380px;
+            box-shadow: 0 40px 100px rgba(0,0,0,0.6);
+        }
+        
+        .brand { margin-bottom: 3rem; line-height: 1.1; }
+        .brand .top { 
+            display: block; 
+            font-size: 2.8rem; 
+            font-weight: 900; 
+            color: #ffffff; 
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+        .brand .bottom { 
+            display: block; 
+            font-size: 1.2rem; 
+            font-weight: 500; 
+            color: var(--color-accent); 
+            letter-spacing: 11px;
+            text-transform: uppercase;
+            margin-top: 8px;
+            margin-right: -11px; 
+        }
+
+        .form-control { margin-bottom: 12px; }
+        
+        input {
+            width: 100%; 
+            padding: 14px 25px; 
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1); 
+            border-radius: 16px; 
+            color: white; 
+            outline: none; 
+            box-sizing: border-box;
+            font-family: inherit; 
+            font-size: 14px; 
+            transition: 0.3s;
+        }
+        
+        input:focus { 
+            border-color: var(--color-accent); 
+            background: rgba(255,255,255,0.1); 
+            box-shadow: 0 0 20px var(--glow-shadow); 
+        }
+
+        button {
+            width: 100%; 
+            padding: 16px; 
+            background: var(--color-accent); 
+            color: white; 
+            border: none;
+            border-radius: 16px; 
+            font-family: inherit;
+            font-weight: 700; 
+            cursor: pointer; 
+            transition: 0.3s;
+            text-transform: uppercase; 
+            letter-spacing: 1px; 
+            margin-top: 15px;
+        }
+        
+        button:hover:not(:disabled) { 
+            background: var(--color-accent-hover); 
+            transform: translateY(-2px); 
+            box-shadow: 0 10px 30px var(--glow-shadow); 
+        }
+        
+        button:disabled {
+            background: #444;
+            color: #888;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        #msg { 
+            margin-top: 1.5rem; 
+            font-size: 0.85rem; 
+            color: #ff4d4d; 
+            min-height: 20px; 
+        }
+    </style>
+</head>
+<body>
+    <div class="glass-card">
+        <div class="brand">
+            <span class="top">FILMOTECA</span>
+            <span class="bottom">PERSONAL</span>
+        </div>
+        
+        <form id="login-form">
+            <div class="form-control">
+                <input type="email" name="email" placeholder="Email" required />
+            </div>
+            <div class="form-control">
+                <input type="password" name="password" placeholder="Contraseña" required />
+            </div>
+            <button type="submit" id="btn">ACCEDER</button>
+        </form>
+        <p id="msg"></p>
+    </div>
+
+    <script>
+        import { createClient } from '@supabase/supabase-js'
+        
+        const supabase = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.PUBLIC_SUPABASE_ANON_KEY);
+
+        const btn = document.getElementById('btn');
+        const msg = document.getElementById('msg');
+        const form = document.getElementById('login-form');
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const email = new FormData(form).get('email');
+            const password = new FormData(form).get('password');
+            
+            btn.innerText = "VERIFICANDO...";
+            btn.disabled = true;
+            msg.innerText = "";
+
+            const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+            if (error) {
+                msg.style.color = "#ff4d4d";
+                msg.innerText = "Credenciales incorrectas.";
+                btn.innerText = "ACCEDER";
+                btn.disabled = false;
+            } else if (data.session) {
+                // Creadas directivas de seguridad para las cookies (Secure)
+                const opt = "path=/; SameSite=Lax; max-age=604800; Secure;";
+                document.cookie = `sb-access-token=${data.session.access_token}; ${opt}`;
+                document.cookie = `sb-refresh-token=${data.session.refresh_token}; ${opt}`;
+                
+                // Guarda el email en local (recuerda usar la sesión del servidor para validaciones críticas)
+                localStorage.setItem('user_email', data.user.email);
+                
+                window.location.href = "/dashboard";
+            }
+        });
+    </script>
+</body>
+</html>

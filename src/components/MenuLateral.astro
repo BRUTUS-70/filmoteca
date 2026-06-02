@@ -1,0 +1,128 @@
+---
+// src/components/MenuLateral.astro
+interface Props {
+    modoSecundario?: boolean;
+}
+
+const { modoSecundario = false } = Astro.props;
+---
+
+<aside id="sidebar">
+    <div class="logo-container" style="cursor: pointer;" onclick="window.location.href='/dashboard'">
+        <span class="title-white">Filmoteca</span>
+        <span class="title-blue">Personal</span>
+    </div>
+    
+    <div style="overflow-y: auto; scrollbar-width: none; flex-grow: 1;">
+        <slot />
+    </div>
+
+    {modoSecundario ? (
+        <div class="nav-separator">
+            <div class="nav-link" onclick="window.location.href='/dashboard'" style="border: 1px solid var(--border-color); justify-content: center; margin-bottom: 10px;">
+                <span>⬅️ Volver al Dashboard</span>
+            </div>
+        </div>
+    ) : (
+        <div id="common-nav-container"></div>
+    )}
+
+    <div class="user-footer" style="display: flex; align-items: center; gap: 15px; margin-top: auto;">
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 5px;">
+            <div id="u-avatar" class="user-avatar-circle">?</div>
+            <div id="u-menu-links">
+                <div class="u-link" onclick="window.logout()" style="font-size: 0.75rem; color: var(--text-muted); cursor: pointer; text-decoration: underline;">Cerrar Sesión</div>
+            </div>
+        </div>
+        <div class="user-info" style="flex: 1; overflow: hidden;">
+            <div id="u-name" class="user-name-display">Cargando...</div>
+        </div>
+    </div>
+</aside>
+
+<script>
+    import { createClient } from '@supabase/supabase-js';
+    
+    const supabase = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.PUBLIC_SUPABASE_ANON_KEY);
+
+    window.logout = async () => {
+        document.cookie = "sb-access-token=; path=/; max-age=0;";
+        document.cookie = "sb-refresh-token=; path=/; max-age=0;";
+        localStorage.clear();
+        await supabase.auth.signOut();
+        window.location.replace('/');
+    };
+
+    async function initMenu() {
+        const { data: authData } = await supabase.auth.getSession();
+        if (!authData?.session?.user) return;
+        
+        const currentUser = authData.session.user;
+        const { data: profile } = await supabase.from('perfiles').select('*').eq('email', currentUser.email).maybeSingle();
+        
+        const role = (profile?.rol || 'User').toLowerCase().trim();
+        
+        // 1. Construir enlaces comunes (SOLO si existe el contenedor, es decir, modo principal)
+        const commonNavEl = document.getElementById('common-nav-container');
+        if (commonNavEl) {
+            const path = window.location.pathname;
+            let commonNavHTML = '<div class="nav-separator">';
+            
+            // Si el rol NO es admin, mostrar Ajustes
+            if (role !== 'admin') {
+                commonNavHTML += `
+                    <div class="nav-link ${path.includes('/ajustes') ? 'active' : ''}" onclick="window.location.href='/ajustes'">
+                        <span>⚙️ Ajustes</span>
+                    </div>
+                `;
+            }
+
+            // Lista de Deseos visible para todos
+            commonNavHTML += `
+                <div class="nav-link ${path.includes('/deseos') ? 'active' : ''}" onclick="window.location.href='/deseos'">
+                    <span>⭐ Lista de Deseos</span>
+                </div>
+            `;
+
+            // Panel de control SOLO visible para administradores
+            if (role === 'admin') {
+                commonNavHTML += `
+                    <div class="nav-link ${path.includes('/admin') ? 'active' : ''}" onclick="window.location.href='/admin'">
+                        <span>🛠️ Panel de Control</span>
+                    </div>
+                `;
+            }
+            
+            commonNavHTML += '</div>';
+            commonNavEl.innerHTML = commonNavHTML;
+        }
+
+        // 2. Rellenar datos del usuario en el Footer
+        const roleText = role === 'admin' ? 'Administrador' : 'Usuario';
+        const metaName = currentUser.user_metadata?.nombre || currentUser.user_metadata?.name || currentUser.user_metadata?.alias;
+        const nameDisplay = (profile?.nombre && profile.nombre.trim() !== '') ? profile.nombre : (metaName || currentUser.email);
+        const initialLetter = nameDisplay.charAt(0).toUpperCase();
+
+        const nameEl = document.getElementById('u-name');
+        if (nameEl) {
+            nameEl.innerHTML = `
+                <div style="font-weight: 600; font-size: 0.9rem; color: var(--color-accent); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${nameDisplay}</div>
+                <div style="font-weight: 400; font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">${roleText}</div>
+            `;
+        }
+
+        const avatarContainer = document.getElementById('u-avatar');
+        const savedAvatar = profile?.avatar;
+        if (avatarContainer) {
+            if (savedAvatar && (savedAvatar.startsWith('http://') || savedAvatar.startsWith('https://'))) {
+                avatarContainer.innerHTML = `<img src="${savedAvatar}" alt="Avatar" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;" />`;
+                avatarContainer.style.background = 'transparent';
+            } else {
+                avatarContainer.innerHTML = savedAvatar ? savedAvatar.toUpperCase().substring(0, 2) : initialLetter;
+                avatarContainer.style.background = 'var(--color-accent)';
+            }
+        }
+    }
+
+    initMenu();
+</script>
