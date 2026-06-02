@@ -1,8 +1,10 @@
 ---
-// src/pages/admin.astro
 import Layout from '../layouts/Layout.astro';
 import MenuLateral from '../components/MenuLateral.astro';
 export const prerender = false;
+
+// 1. Astro la lee en el servidor
+const apiKey = import.meta.env.PUBLIC_TMDB_KEY;
 ---
 
 <Layout title="Panel de Control | Filmoteca">
@@ -214,11 +216,20 @@ export const prerender = false;
     </div>
 
     <script>
+        <script define:vars={{ apiKey }}>
+            // Ahora 'apiKey' existe mágicamente aquí dentro gracias a Astro
+            import { createClient } from '@supabase/supabase-js'
+
+            // Y cambias la variable tmdbKey para que use apiKey
+            const tmdbKey = apiKey; 
+    
+            // ... el resto de tu código igual ...
+        </script>
+
         import { createClient } from '@supabase/supabase-js'
         
         const supabase = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.PUBLIC_SUPABASE_ANON_KEY);
         const tmdbKey = import.meta.env.PUBLIC_TMDB_KEY;
-        console.log("Mi clave de TMDB en el navegador es:", tmdbKey); // <--- AÑADE ESTO
 
         let DATA_DB = [];
         let DATA_USERS = [];
