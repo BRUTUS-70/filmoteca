@@ -1,10 +1,7 @@
----
+// src/pages/admin.astro
 import Layout from '../layouts/Layout.astro';
 import MenuLateral from '../components/MenuLateral.astro';
 export const prerender = false;
-
-// 1. Astro la lee en el servidor
-const apiKey = import.meta.env.PUBLIC_TMDB_KEY;
 ---
 
 <Layout title="Panel de Control | Filmoteca">
@@ -216,20 +213,10 @@ const apiKey = import.meta.env.PUBLIC_TMDB_KEY;
     </div>
 
     <script>
-        <script define:vars={{ apiKey }}>
-            // Ahora 'apiKey' existe mágicamente aquí dentro gracias a Astro
-            import { createClient } from '@supabase/supabase-js'
-
-            // Y cambias la variable tmdbKey para que use apiKey
-            const tmdbKey = apiKey; 
-    
-            // ... el resto de tu código igual ...
-        </script>
-
         import { createClient } from '@supabase/supabase-js'
         
         const supabase = createClient(import.meta.env.PUBLIC_SUPABASE_URL, import.meta.env.PUBLIC_SUPABASE_ANON_KEY);
-        const tmdbKey = import.meta.env.PUBLIC_TMDB_KEY;
+        const tmdbKey = import.meta.env.PUBLIC_TMDB_KEY; 
 
         let DATA_DB = [];
         let DATA_USERS = [];
@@ -634,7 +621,7 @@ const apiKey = import.meta.env.PUBLIC_TMDB_KEY;
                     }
 
                     combined.sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
-                    const filtered = combined.slice(0, 3); // Límite de 3
+                    const filtered = combined.slice(0, 3); 
                     
                     if (filtered.length === 0) {
                         resultsBox.innerHTML = '<div style="padding: 10px; color: var(--text-muted); text-align: center;">No se encontraron resultados.</div>';
@@ -648,7 +635,6 @@ const apiKey = import.meta.env.PUBLIC_TMDB_KEY;
                             
                             const safeItem = encodeURIComponent(JSON.stringify(item));
                             
-                            // Reutilizamos tus clases .tmdb-wish-*
                             return `
                                 <div class="tmdb-wish-item" onclick="window.selectTmdbLink(JSON.parse(decodeURIComponent('${safeItem}')))">
                                     <img class="tmdb-wish-poster" src="${thumbUrl}" onerror="this.src='https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300'" />
@@ -667,12 +653,10 @@ const apiKey = import.meta.env.PUBLIC_TMDB_KEY;
         };
 
         window.selectTmdbLink = async (item) => {
-            // 1. Guardar el ID de TMDB
             const tmdbInput = document.getElementById('fc-tmdb-id');
             tmdbInput.value = item.id;
             tmdbInput.setAttribute('value', item.id);
             
-            // 2. Extraer y actualizar la información de la película/serie
             const isTv = item.media_type === 'tv';
             const title = isTv ? item.name : (item.title || item.name);
             const date = item.release_date || item.first_air_date;
@@ -681,9 +665,8 @@ const apiKey = import.meta.env.PUBLIC_TMDB_KEY;
             document.getElementById('fc-titulo').value = title;
             document.getElementById('fc-anio').value = year;
             document.getElementById('fc-categoria').value = isTv ? 'Series' : 'Cine';
-            document.getElementById('modal-content-title').innerText = title; // Actualiza el título visual del modal
+            document.getElementById('modal-content-title').innerText = title; 
             
-            // 3. Lógica de la carátula: Si NO hay carátula, pone la nueva. Si YA hay, la respeta.
             const caratulaInput = document.getElementById('fc-caratula');
             if (!caratulaInput.value || caratulaInput.value.trim() === '') {
                 caratulaInput.value = item.poster_path || '';
@@ -692,7 +675,6 @@ const apiKey = import.meta.env.PUBLIC_TMDB_KEY;
                     : 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=300';
             }
             
-            // 4. (Opcional) Consultar la duración exacta si es una película
             if (!isTv && item.id) {
                 try {
                     const dRes = await fetch(`https://api.themoviedb.org/3/movie/${item.id}?api_key=${tmdbKey}&language=es-ES`);
@@ -702,12 +684,9 @@ const apiKey = import.meta.env.PUBLIC_TMDB_KEY;
                         const m = dData.runtime % 60;
                         document.getElementById('fc-duracion').value = h > 0 ? `${h}h ${m}m` : `${m}m`;
                     }
-                } catch (e) {
-                    console.warn("No se pudo obtener la duración extra.");
-                }
+                } catch (e) {}
             }
             
-            // 5. Restablecer la interfaz de búsqueda
             document.getElementById('fc-tmdb-status').style.display = 'block';
             document.getElementById('fc-tmdb-id-display').innerText = item.id;
             document.getElementById('fc-tmdb-results').style.display = 'none';
@@ -752,7 +731,6 @@ const apiKey = import.meta.env.PUBLIC_TMDB_KEY;
                 saga: document.getElementById('fc-saga').value.trim(),
                 capitulos: document.getElementById('fc-capitulos').value ? parseInt(document.getElementById('fc-capitulos').value) : null,
                 poster_url: document.getElementById('fc-caratula').value,
-                // Aplicamos Number para mayor seguridad al guardarlo
                 tmdb_id: tmdbVal ? Number(tmdbVal) : null 
             };
 
@@ -819,9 +797,6 @@ const apiKey = import.meta.env.PUBLIC_TMDB_KEY;
             });
         };
 
-        // ---------------------------------------------------------
-        // 2. GESTIÓN DE USUARIOS
-        // ---------------------------------------------------------
         function renderUsers() {
             try {
                 const grid = document.getElementById('grid-users');
@@ -1047,4 +1022,26 @@ const apiKey = import.meta.env.PUBLIC_TMDB_KEY;
 
         init();
     </script>
+
+    <style>
+        .tmdb-dropdown-container {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: #1a1a1a;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            margin-top: 5px;
+            max-height: 250px;
+            overflow-y: auto;
+            overflow-x: hidden; 
+            padding: 5px;
+            z-index: 100;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.6);
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+    </style>
 </Layout>
